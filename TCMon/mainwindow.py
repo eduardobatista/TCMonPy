@@ -95,6 +95,7 @@ class mainwindow(QtWidgets.QMainWindow):
         self.flagsaved = True
         self.ui.statusbar.clearMessage()
         self.driver.dman.resetData()
+        self.mainplot.setDataman(self.driver.dman)
         self.mainplot.updateFig()
 
 
@@ -111,6 +112,9 @@ class mainwindow(QtWidgets.QMainWindow):
             self.valsT[idx].setText(text)
         else:
             self.valsE[idx-8].setText(text)
+
+    def setJunta(self,text):
+        self.ui.valRef.setText(text)
 
     def updatePlot(self):
         self.mainplot.updateFig()
@@ -210,15 +214,11 @@ class mainwindow(QtWidgets.QMainWindow):
                 ww.setEnabled(settings.value(f'EN{keyval}') == 'True')
 
     def writeConfig(self):
-        settings = QtCore.QSettings("TCMonSoftware", "TCMon")
-        settings.setValue("Porta", self.porta)    
+        settings = QtCore.QSettings("TCMonSoftware", "TCMon")    
         self.saveState(settings)
 
     def readConfig(self):        
         settings = QtCore.QSettings("TCMonSoftware", "TCMon")
-        if (settings.value("Porta") is not None):
-            self.porta = settings.value("Porta")
-            # self.setaPorta(self.porta)
         self.restoreState(settings)
 
     def closeEvent(self, event):

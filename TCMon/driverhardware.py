@@ -32,6 +32,10 @@ class driverhardware:
         self.dman = dataman(360)
 
         self.dummymode = False
+        self.dummytable = [b"\x06\x4F\x00",b"\x01\x90\x00",b"\x00\x01\x00",
+                  b"\xFF\xFC\x00",b"\xFF\xF0\x00",b"\xF0\x60\x00",
+                  b"\xF0\x60\x00",b"\x01\x90\x00"]  
+        self.dummyjunta = b"\xE7\x00"
 
     
 
@@ -59,6 +63,7 @@ class driverhardware:
                 self.dman.resetData(amostragem)
                 if not self.dummymode:
                     self.openSerial()
+                    time.sleep(1.6)
                     self.handshake()
                 # TODO: grava configurações controle (ks e tipo)
                 self.flagrunning = True
@@ -89,14 +94,18 @@ class driverhardware:
         self.tipoctrl = tipo
         self.termoparctrl = termopar+1
         self.ks = [kp,ki,kd]
-
+                 
     def leTermopar(self,idx):
         if self.dummymode:
-            return 10.0+idx,21.0,f"{10.0+idx} °C"
-        cmd = f'r{idx+1}'.encode() # Comando para leitura: uma string com r seguido do número (como string)
-        self.serial.write(cmd)
-        time.sleep(0.15)
-        resp = self.serial.read(5)  # Resposta sempre em 5 bytes: os 3 primeiros correspondem à leitura, os outros 2 à junta fria. 
+            # return 10.0+idx,21.0,f"{10.0+idx} °C"
+            time.sleep(0.15)
+            resp = self.dummytable[idx] + self.dummyjunta
+        else:
+            cmd = f'r{idx+1}'.encode() # Comando para leitura: uma string com r seguido do número (como string)
+            self.serial.write(cmd)
+            time.sleep(0.15)
+            resp = self.serial.read(5)  # Resposta sempre em 5 bytes: os 3 primeiros correspondem à leitura, os outros 2 à junta fria. 
+
         if resp[0] == 0x80:
             if resp[2] == 0x00:
                 text = "Aberto"
@@ -108,10 +117,12 @@ class driverhardware:
                 text = "ExtOOR"
             val = 0.0
             juntafria = 0.0
-        else:
-            val = struct.unpack('>l', leitura_junta_quente)
-            juntafria = struct.unpack('>h', leitura_junta_fria)
-            text = f"{val} °C"
+        else:           
+            aux = int.from_bytes(resp[0:3],byteorder='big',signed=True)
+            val = float(aux) / (2**12)
+            aux = int.from_bytes(resp[3:5],byteorder='big',signed=True) 
+            juntafria = float(aux) / (2**8)            
+            text = f"{val:.2f} °C"
         return val,juntafria,text
 
 
@@ -121,11 +132,13 @@ class driverhardware:
         threading.Timer(self.Tsample, self.realizaLeituras).start()    
         readtime = int(time.time()) - self.starttime
         self.mwindow.setCurTime(readtime)
+        junta = 0
         for k in range(8):
             if self.enablemap[k]:
                 val,junta,text = self.leTermopar(k)
                 self.mwindow.setValText(text,k)
                 self.dman.appendTData(k,readtime,val)
+        self.mwindow.setJunta(f"{junta:.2f}  °C")
         for k in range(8,10):
             if self.enablemap[k]:
                 print(f"E{k-8}")

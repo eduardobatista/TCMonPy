@@ -50,6 +50,8 @@ class MainPlot(GraphicsLayoutWidget):
                     pg.mkPen('g', width=2, style=QtCore.Qt.DashLine) ]
         self.plotSetup()
 
+    def setDataman(self,dataman):
+        self.dman = dataman
 
     def plotSetup(self, samplingperiod=1, enablemap=[], dataman=None):
         self.dman = dataman
