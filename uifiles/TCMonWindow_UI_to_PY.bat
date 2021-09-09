@@ -1,0 +1,1 @@
+pyuic5 --output=..\TCMon\TCMonWindow.py TCMon.ui
