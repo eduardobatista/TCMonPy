@@ -27,6 +27,8 @@ class driverhardware:
         self.tipoctrl = "Off"
         self.termoparctrl = 0
         self.ks = [1.0,0.0,0.0]
+        self.manuallevel = 0.0
+        self.setpoint = 0.0
 
         self.MAX_TIME = 360    # 360 minutos
         self.dman = dataman(360)
@@ -57,7 +59,24 @@ class driverhardware:
             time.sleep(0.1)
         raise Exception("Handshake com dispositivo falhou.")
 
-    def iniciaLeituras(self,amostragem,enablemap):
+    def writeThermType(self,tipo):
+        cmd = f's{tipo}'[0:2].encode() # Comando para setar tipo de termopar.
+        self.serial.write(cmd)
+        time.sleep(0.05)
+        # TODO: Ler um "ok" como resposta.
+    
+    def writeManualCtrlLevel(self):
+        convertedlevel = 255 - int(255.0*self.manuallevel/100.0) # Adaptando considerando que 100% = 0 e 0% = 255  
+        cmd = [ord('m'), convertedlevel]
+        self.serial.write(cmd)
+
+    def ctrlOff(self):
+        if self.tipoctrl == "Manual":
+            cmd = [ord('m'), 255]
+            self.serial.write(cmd)
+
+
+    def iniciaLeituras(self,amostragem,enablemap,tipotermopar):
         if not self.flagrunning:
             try:
                 self.dman.resetData(amostragem)
@@ -65,7 +84,9 @@ class driverhardware:
                     self.openSerial()
                     time.sleep(1.6)
                     self.handshake()
-                # TODO: grava configurações controle (ks e tipo)
+                    time.sleep(0.1)
+                    self.writeThermType(tipotermopar)
+                    # TODO: grava configurações controle (ks e tipo)
                 self.flagrunning = True
                 self.Tsample = float(amostragem)
                 self.enablemap = enablemap
@@ -87,10 +108,11 @@ class driverhardware:
         # print(value)
 
     def changeManualCtrlLevel(self,value):
-        self.manuallevel = value
+        self.manuallevel = float(value)
         # print(value)
 
     def setCtrlConfig(self,tipo,termopar,kp,ki,kd):
+        # print(tipo)
         self.tipoctrl = tipo
         self.termoparctrl = termopar+1
         self.ks = [kp,ki,kd]
@@ -130,6 +152,8 @@ class driverhardware:
         if not self.flagrunning:
             return
         threading.Timer(self.Tsample, self.realizaLeituras).start()    
+        if (self.tipoctrl == 'Manual') and (not self.dummymode):
+            self.writeManualCtrlLevel()
         readtime = int(time.time()) - self.starttime
         self.mwindow.setCurTime(readtime)
         junta = 0

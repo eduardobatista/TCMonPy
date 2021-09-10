@@ -33,8 +33,9 @@ class mainwindow(QtWidgets.QMainWindow):
         self.ui.checkCtrlManual.toggled.connect(self.ctrlManualChanged)
         self.ui.checkCtrlAuto.toggled.connect(self.ctrlAutoChanged)
 
-        self.ui.spinSetPoint.valueChanged.connect(self.setPointChanged)
-        self.ui.spinCtrlManual.valueChanged.connect(self.manualCtrlLevelChanged)
+        self.ui.spinSetPoint.editingFinished.connect(self.setPointChanged)
+        self.ui.spinCtrlManual.editingFinished.connect(self.manualCtrlLevelChanged)
+        # cc.editingFinished.connect(self.changeGeneratorConfig)editingFinished
 
         self.mainplot = MainPlot(nplots=1,samplingperiod=1)
         self.ui.plotWidgetLayout.addWidget(self.mainplot)
@@ -72,11 +73,12 @@ class mainwindow(QtWidgets.QMainWindow):
                     self.ui.spinSetPoint.setEnabled(False)                    
                 if not self.ui.checkCtrlManual.isChecked():
                     self.ui.spinCtrlManual.setEnabled(False)
+                self.configCtrl()
                 self.setPointChanged()
                 self.manualCtrlLevelChanged()                
                 amostr = self.ui.comboAmostragem.currentIndex() + 1
                 self.mainplot.plotSetup(amostr,enablemap,self.driver.dman)            
-                self.driver.iniciaLeituras(amostr,enablemap)
+                self.driver.iniciaLeituras(amostr,enablemap,self.ui.comboTipoTermopar.currentText())
 
 
     def errorStarting(self,msg):
