@@ -70,6 +70,11 @@ class driverhardware:
         cmd = [ord('m'), convertedlevel]
         self.serial.write(cmd)
 
+    def writeAutoCtrlData(self):
+        convertedsetpoint = int(self.setpoint) # Adaptando considerando que 100% = 0 e 0% = 255  
+        cmd = [ord('a'), convertedsetpoint]
+        self.serial.write(cmd)
+
     def ctrlOff(self):
         if self.tipoctrl == "Manual":
             cmd = [ord('m'), 255]
@@ -111,13 +116,18 @@ class driverhardware:
         self.manuallevel = float(value)
         # print(value)
 
+    def changeCtrlType(self,tipo):
+        self.tipoctrl = tipo
+
     def setCtrlConfig(self,tipo,termopar,kp,ki,kd):
         # print(tipo)
         self.tipoctrl = tipo
         self.termoparctrl = termopar+1
         self.ks = [kp,ki,kd]
                  
+
     def leTermopar(self,idx):
+
         if self.dummymode:
             # return 10.0+idx,21.0,f"{10.0+idx} °C"
             time.sleep(0.15)
@@ -151,9 +161,15 @@ class driverhardware:
     def realizaLeituras(self):
         if not self.flagrunning:
             return
-        threading.Timer(self.Tsample, self.realizaLeituras).start()    
+        threading.Timer(self.Tsample, self.realizaLeituras).start() 
+
+        if (self.tipoctrl == 'Off') and (not self.dummymode):
+            self.ctrlOff()
         if (self.tipoctrl == 'Manual') and (not self.dummymode):
             self.writeManualCtrlLevel()
+        elif (self.tipoctrl == 'Auto') and (not self.dummymode):
+            self.writeAutoCtrlData()
+
         readtime = int(time.time()) - self.starttime
         self.mwindow.setCurTime(readtime)
         junta = 0

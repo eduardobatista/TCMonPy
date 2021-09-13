@@ -78,7 +78,7 @@
              <string> °C</string>
             </property>
             <property name="decimals">
-             <number>1</number>
+             <number>0</number>
             </property>
            </widget>
           </item>
@@ -813,7 +813,7 @@
        <item row="26" column="1">
         <widget class="QComboBox" name="comboTipoTermopar">
          <property name="currentText">
-          <string>T</string>
+          <string>B</string>
          </property>
          <item>
           <property name="text">

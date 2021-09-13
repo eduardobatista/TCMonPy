@@ -23,9 +23,9 @@ class mainwindow(QtWidgets.QMainWindow):
         self.valsT = [self.ui.valT1,self.ui.valT2,self.ui.valT3,self.ui.valT4,self.ui.valT5,self.ui.valT6,self.ui.valT7,self.ui.valT8]
         self.valsE = [self.ui.valE1, self.ui.valE2]
 
-        self.disabledWhenRunning = self.checksT + self.checksE + [self.ui.checkCtrlAuto, self.ui.checkCtrlManual, 
-                              self.ui.comboTermoparCtrl, self.ui.comboPorta, self.ui.comboTipoTermopar, self.ui.comboAmostragem,
-                              self.ui.spinKd, self.ui.spinKi, self.ui.spinKp, self.ui.bLimpar]
+        self.disabledWhenRunning = self.checksT + self.checksE + [ self.ui.comboTermoparCtrl, self.ui.comboPorta, 
+                                                                   self.ui.comboTipoTermopar, self.ui.comboAmostragem,
+                                                                   self.ui.spinKd, self.ui.spinKi, self.ui.spinKp, self.ui.bLimpar]
 
         self.ui.bIniciar.clicked.connect(self.bInit)
         self.ui.bLimpar.clicked.connect(self.bLimpar)
@@ -35,7 +35,6 @@ class mainwindow(QtWidgets.QMainWindow):
 
         self.ui.spinSetPoint.editingFinished.connect(self.setPointChanged)
         self.ui.spinCtrlManual.editingFinished.connect(self.manualCtrlLevelChanged)
-        # cc.editingFinished.connect(self.changeGeneratorConfig)editingFinished
 
         self.mainplot = MainPlot(nplots=1,samplingperiod=1)
         self.ui.plotWidgetLayout.addWidget(self.mainplot)
@@ -47,7 +46,6 @@ class mainwindow(QtWidgets.QMainWindow):
         self.saveprefix = "TCMon"
 
         self.readConfig()
-
     
     
     def bInit(self):
@@ -57,8 +55,8 @@ class mainwindow(QtWidgets.QMainWindow):
                 self.driver.paraLeituras()
                 for comp in self.disabledWhenRunning:
                     comp.setEnabled(True)  
-                self.ui.spinCtrlManual.setEnabled(True)
-                self.ui.spinSetPoint.setEnabled(True)
+                # self.ui.spinCtrlManual.setEnabled(True)
+                # self.ui.spinSetPoint.setEnabled(True)
                 for val in self.valsT+self.valsE:
                     val.setEnabled(True)
             else:
@@ -69,10 +67,10 @@ class mainwindow(QtWidgets.QMainWindow):
                     enablemap.append(chk.isChecked())
                     if not enablemap[-1]:
                         val.setEnabled(False)                  
-                if not self.ui.checkCtrlAuto.isChecked():
-                    self.ui.spinSetPoint.setEnabled(False)                    
-                if not self.ui.checkCtrlManual.isChecked():
-                    self.ui.spinCtrlManual.setEnabled(False)
+                # if not self.ui.checkCtrlAuto.isChecked():
+                #     self.ui.spinSetPoint.setEnabled(False)                    
+                # if not self.ui.checkCtrlManual.isChecked():
+                #     self.ui.spinCtrlManual.setEnabled(False)
                 self.configCtrl()
                 self.setPointChanged()
                 self.manualCtrlLevelChanged()                
@@ -89,7 +87,6 @@ class mainwindow(QtWidgets.QMainWindow):
         self.ui.spinSetPoint.setEnabled(True)
         for val in self.valsT+self.valsE:
             val.setEnabled(True)
-
 
 
     def bLimpar(self):
@@ -124,11 +121,22 @@ class mainwindow(QtWidgets.QMainWindow):
     def ctrlAutoChanged(self):
         if self.ui.checkCtrlAuto.isChecked():
             self.ui.checkCtrlManual.setChecked(False)
-
+            if self.driver is not None:
+                self.driver.changeCtrlType('Auto')
+                self.setPointChanged()
+        else:
+            if (not self.ui.checkCtrlManual.isChecked()) and (self.driver is not None):
+                self.driver.changeCtrlType('Off')
         
     def ctrlManualChanged(self):
         if self.ui.checkCtrlManual.isChecked():
             self.ui.checkCtrlAuto.setChecked(False)
+            if self.driver is not None:
+                self.driver.changeCtrlType('Manual')
+                self.manualCtrlLevelChanged()
+        else:
+            if (not self.ui.checkCtrlAuto.isChecked()) and (self.driver is not None):
+                self.driver.changeCtrlType('Off')
 
     def configCtrl(self):
         if self.driver is not None:
