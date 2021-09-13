@@ -15,6 +15,7 @@ class dataman:
             self.TTime.append(np.zeros(self.totpoints))
             self.ctsample.append(0)
         self.globalctreadings = 0
+        self.setpoint = None
             
 
     def resetData(self,tsampling=1):

@@ -66,16 +66,22 @@ class driverhardware:
         # TODO: Ler um "ok" como resposta.
     
     def writeManualCtrlLevel(self):
+        if self.dummymode: 
+            return
         convertedlevel = 255 - int(255.0*self.manuallevel/100.0) # Adaptando considerando que 100% = 0 e 0% = 255  
         cmd = [ord('m'), convertedlevel]
         self.serial.write(cmd)
 
     def writeAutoCtrlData(self):
+        if self.dummymode: 
+            return
         convertedsetpoint = int(self.setpoint) # Adaptando considerando que 100% = 0 e 0% = 255  
         cmd = [ord('a'), convertedsetpoint]
         self.serial.write(cmd)
 
     def ctrlOff(self):
+        if self.dummymode: 
+            return
         if self.tipoctrl == "Manual":
             cmd = [ord('m'), 255]
             self.serial.write(cmd)
@@ -163,12 +169,18 @@ class driverhardware:
             return
         threading.Timer(self.Tsample, self.realizaLeituras).start() 
 
-        if (self.tipoctrl == 'Off') and (not self.dummymode):
+        if (self.tipoctrl == 'Off'):
             self.ctrlOff()
-        if (self.tipoctrl == 'Manual') and (not self.dummymode):
+            self.dman.setpoint = None
+            # print("o!")
+        elif (self.tipoctrl == 'Manual'):
             self.writeManualCtrlLevel()
-        elif (self.tipoctrl == 'Auto') and (not self.dummymode):
+            self.dman.setpoint = None
+            # print("m!")
+        elif (self.tipoctrl == 'Auto'):
             self.writeAutoCtrlData()
+            self.dman.setpoint = self.setpoint
+            # print(f"a!{self.setpoint}")
 
         readtime = int(time.time()) - self.starttime
         self.mwindow.setCurTime(readtime)

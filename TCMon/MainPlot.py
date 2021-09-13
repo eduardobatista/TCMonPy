@@ -56,7 +56,8 @@ class MainPlot(GraphicsLayoutWidget):
     def plotSetup(self, samplingperiod=1, enablemap=[], dataman=None):
         self.dman = dataman
         self.samplingperiod = samplingperiod 
-        self.lines = []
+        self.lines = []   
+        self.setpointline = None     
         for k in range(1):
             self.pitens[k].disableAutoRange()
             self.pitens[k].setLabel('bottom', 'Tempo (s)')
@@ -72,8 +73,11 @@ class MainPlot(GraphicsLayoutWidget):
             for idx,en in enumerate(enablemap):
                 if en:
                     self.lines.append( self.pitens[k].plot(np.array([]), np.array([]), pen=self.pens[ctlines]) )
+                    self.lines[-1].setClipToView(False)
                     ctlines += 1
                     self.lineidxs.append(idx)
+            self.setpointline = self.pitens[k].plot(np.array([]), np.array([]), pen= pg.mkPen('r', width=1, style=QtCore.Qt.DotLine))
+            self.setpointline.setClipToView(False)
         
 
     def updateFig(self):
@@ -89,11 +93,19 @@ class MainPlot(GraphicsLayoutWidget):
             else:
                 npontos[k] = self.npontosjanela[k]
         if npontos[0] > 0:
+            if self.dman.setpoint is not None:
+                # print(np.array([float(-self.janelax[0]), 0.0]),np.array([self.dman.setpoint, self.dman.setpoint]))
+                self.setpointline.setData(np.array([float(-self.janelax[0]), 0.0]),np.array([self.dman.setpoint, self.dman.setpoint]))
+            else:
+                self.setpointline.setData([], [])
             for k,idx in enumerate(self.lineidxs):
                 self.lines[k].setData(self.vetoreixox[0][-npontos[0]:], self.dman.TData[idx][limi[0]:limf[0]])
+                # print(self.vetoreixox[0][-npontos[0]:], self.dman.TData[idx][limi[0]:limf[0]])
+            
         else:
             for k in range(len(self.lines)):
                 self.lines[k].setData([], [])
+            self.setpointline.setData([], [])
 
 
     def sizeHint(self):
