@@ -79,6 +79,21 @@ class driverhardware:
         cmd = [ord('a'), convertedsetpoint]
         self.serial.write(cmd)
 
+    def writeCtrlKs(self):
+        if self.dummymode: 
+            return
+        self.serial.write('j')
+        self.serial.write(struct.pack("<fff", self.ks[0], self.ks[1], self.ks[2])) # Kp, Ki, Kd
+        # TODO: Ler confirmação.
+        ''' 
+            No lado do Arduino:
+                Serial.readBytes((char *) &kp, sizeof(float));
+                Serial.readBytes((char *) &ki, sizeof(float));
+                Serial.readBytes((char *) &kd, sizeof(float));
+            one kp, ki e kd devem ser variáveis definidas como floats: float kp, ki, kd.
+            Fonte: https://stackoverflow.com/questions/59505221/sending-floats-as-bytes-over-serial-from-python-program-to-arduino
+        '''
+
     def ctrlOff(self):
         if self.dummymode: 
             return
@@ -97,7 +112,8 @@ class driverhardware:
                     self.handshake()
                     time.sleep(0.1)
                     self.writeThermType(tipotermopar)
-                    # TODO: grava configurações controle (ks e tipo)
+                    time.sleep(0.1)
+                    self.writeCtrlKs()
                 self.flagrunning = True
                 self.Tsample = float(amostragem)
                 self.enablemap = enablemap
