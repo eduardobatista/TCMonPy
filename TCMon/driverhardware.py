@@ -2,14 +2,45 @@ import serial
 import time
 import threading
 import struct
+import math
 
 from .dataman import dataman
+
+
+class PID:
+
+    def __init__(self,setpoint=0,kp=1,ki=0,kd=0,ts=1):
+        self.kp = kp
+        self.ki = ki
+        self.kd = kd
+        self.setpoint = setpoint
+        self.ts = ts
+        self.error = 0
+        self.output = 0
+
+    def reset(self):
+        self.error = 0
+        self.output = 0
+        self.integral = 0
+
+    def update(self,reading):
+        self.lasterror = self.error
+        self.error = self.setpoint - reading
+        self.integral = self.integral + (self.error*self.ts)
+        self.derivada = (self.error - self.lasterror) / self.ts
+        self.output = self.kp * self.error + self.ki * self.integral + self.kd * self.derivada
+        if self.output > 100.0:
+            self.output = 100
+        elif self.output < 0:
+            self.output = 0
+        return self.output
+
 
 class driverhardware:
 
     def __init__(self, mwindow):        
         self.mwindow = mwindow
-        self.Tsample = 2.0    
+        self.Tsample = 1.0
         self.serial = serial.Serial(port=None,
                                     baudrate = 19200,
                                     parity=serial.PARITY_NONE,
@@ -19,7 +50,7 @@ class driverhardware:
         if self.serial.isOpen():
             self.serial.close()
         self.flagrunning = False
-        self.starttime = 0
+        self.starttime = None
 
         # Enable map: quais termopares e entradas devem ser lidas
         self.enablemap = [False,False,False,False,False,False,False,False,False,False]
@@ -38,6 +69,8 @@ class driverhardware:
                   b"\xFF\xFC\x00",b"\xFF\xF0\x00",b"\xF0\x60\x00",
                   b"\xF0\x60\x00",b"\x01\x90\x00"]  
         self.dummyjunta = b"\xE7\x00"
+
+        self.pid = PID()
 
     
 
@@ -61,14 +94,20 @@ class driverhardware:
 
     def writeThermType(self,tipo):
         cmd = f's{tipo}'[0:2].encode() # Comando para setar tipo de termopar.
+        # print(cmd)
         self.serial.write(cmd)
         time.sleep(0.05)
-        # TODO: Ler um "ok" como resposta.
+        aux = self.serial.read(2)
+        if aux.decode() != f'k{tipo}':
+            print("Falhou!") # TODO: Raise exception!
     
-    def writeManualCtrlLevel(self):
+    def writeManualCtrlLevel(self,level=None):
         if self.dummymode: 
             return
-        convertedlevel = 255 - int(255.0*self.manuallevel/100.0) # Adaptando considerando que 100% = 0 e 0% = 255  
+        if level is None:
+            convertedlevel = 255 - int(255.0*self.manuallevel/100.0) # Adaptando considerando que 100% = 0 e 0% = 255  
+        else:
+            convertedlevel = 255 - int(255.0*level/100.0)
         cmd = [ord('m'), convertedlevel]
         self.serial.write(cmd)
 
@@ -82,7 +121,7 @@ class driverhardware:
     def writeCtrlKs(self):
         if self.dummymode: 
             return
-        self.serial.write('j')
+        self.serial.write(ord('j'))
         self.serial.write(struct.pack("<fff", self.ks[0], self.ks[1], self.ks[2])) # Kp, Ki, Kd
         # TODO: Ler confirmação.
         ''' 
@@ -97,15 +136,15 @@ class driverhardware:
     def ctrlOff(self):
         if self.dummymode: 
             return
-        if self.tipoctrl == "Manual":
-            cmd = [ord('m'), 255]
-            self.serial.write(cmd)
+        # if self.tipoctrl == "Manual":
+        cmd = [ord('m'), 255]
+        self.serial.write(cmd)
 
 
     def iniciaLeituras(self,amostragem,enablemap,tipotermopar):
         if not self.flagrunning:
             try:
-                self.dman.resetData(amostragem)
+                # self.dman.resetData(amostragem)
                 if not self.dummymode:
                     self.openSerial()
                     time.sleep(1.6)
@@ -117,21 +156,30 @@ class driverhardware:
                 self.flagrunning = True
                 self.Tsample = float(amostragem)
                 self.enablemap = enablemap
-                self.starttime = int(round(time.time() * 1000) / 1000)
+                self.pid.reset()
+                if self.starttime is None:
+                    self.dman.resetData(amostragem)
+                    self.starttime = int(round(time.time() * 1000) / 1000)
                 self.realizaLeituras()
             except Exception as e:
                 self.flagrunning = False
                 if self.serial.isOpen():
                     self.serial.close()
                 self.mwindow.errorStarting(str(e))
-    
+
+    def limpaLeituras(self):
+        self.starttime = None
+        self.dman.resetData(self.Tsample)
+
+
     def paraLeituras(self):
         if self.flagrunning:
-            self.flagrunning = False
+            self.flagrunning = False            
 
 
     def changeSetPoint(self,value):
         self.setpoint = value
+        self.pid.setpoint = value
         # print(value)
 
     def changeManualCtrlLevel(self,value):
@@ -144,9 +192,24 @@ class driverhardware:
     def setCtrlConfig(self,tipo,termopar,kp,ki,kd):
         # print(tipo)
         self.tipoctrl = tipo
-        self.termoparctrl = termopar+1
+        self.termoparctrl = termopar
         self.ks = [kp,ki,kd]
-                 
+        self.pid.kp = kp
+        self.pid.kd = kd
+        self.pid.ki = ki
+
+    def leTermoparADS(self,idx):
+        cmd = f'R{idx}'.encode() # Comando para leitura: uma string com r seguido do número (como string)
+        self.serial.write(cmd)
+        time.sleep(0.1)
+        resp = self.serial.read(2)
+        valuemV = (float(struct.unpack(">h",resp)[0])/2**15 * 0.256) * 1e3
+        if (valuemV >= 0):
+            celsius = valuemV*2.592800E+01 + valuemV**2-7.602961E-01;
+        else:
+            celsius = valuemV*2.5949192E+01 + valuemV**2-2.1316967E-01;
+        return celsius,0,f"{celsius:.2f} °C"
+
 
     def leTermopar(self,idx):
 
@@ -155,10 +218,12 @@ class driverhardware:
             time.sleep(0.15)
             resp = self.dummytable[idx] + self.dummyjunta
         else:
-            cmd = f'r{idx+1}'.encode() # Comando para leitura: uma string com r seguido do número (como string)
+            cmd = f'r{idx}'.encode() # Comando para leitura: uma string com r seguido do número (como string)
             self.serial.write(cmd)
             time.sleep(0.15)
             resp = self.serial.read(5)  # Resposta sempre em 5 bytes: os 3 primeiros correspondem à leitura, os outros 2 à junta fria. 
+            # print(resp)
+            
 
         if resp[0] == 0x80:
             if resp[2] == 0x00:
@@ -169,8 +234,8 @@ class driverhardware:
                 text = "IntOOR"
             elif resp[2] == 0x03:
                 text = "ExtOOR"
-            val = 0.0
-            juntafria = 0.0
+            val = float("nan")
+            juntafria = None
         else:           
             aux = int.from_bytes(resp[0:3],byteorder='big',signed=True)
             val = float(aux) / (2**12)
@@ -182,34 +247,64 @@ class driverhardware:
 
     def realizaLeituras(self):
         if not self.flagrunning:
+            self.ctrlOff()
+            if self.serial.isOpen():
+                self.serial.close()
+            # rtime = int(time.time()) - self.starttime
+            # for k in range(8):
+            #     self.dman.appendEmptyData(k,rtime)
             return
         threading.Timer(self.Tsample, self.realizaLeituras).start() 
 
+        autotermopread = -1
         if (self.tipoctrl == 'Off'):
             self.ctrlOff()
             self.dman.setpoint = None
-            # print("o!")
         elif (self.tipoctrl == 'Manual'):
             self.writeManualCtrlLevel()
             self.dman.setpoint = None
-            # print("m!")
         elif (self.tipoctrl == 'Auto'):
-            self.writeAutoCtrlData()
+            # self.writeAutoCtrlData()
             self.dman.setpoint = self.setpoint
-            # print(f"a!{self.setpoint}")
+            val,juntaaux,text = self.leTermopar(self.termoparctrl)
+            if not math.isnan(val):
+                self.pid.update(val)
+                print(self.pid.output)
+                self.writeManualCtrlLevel(level=self.pid.output)
+            else: 
+                self.writeManualCtrlLevel(level=0)
+            rtimeaux = int(time.time()) - self.starttime
+            if juntaaux is not None:
+                junta = juntaaux
+            # val,junta,text = self.leTermoparADS(k)
+            self.mwindow.setValText(text,self.termoparctrl)
+            self.dman.appendTData(self.termoparctrl,rtimeaux,val)
+            autotermopread = self.termoparctrl
 
         readtime = int(time.time()) - self.starttime
         self.mwindow.setCurTime(readtime)
         junta = 0
+        # axx = time.time()
         for k in range(8):
-            if self.enablemap[k]:
-                val,junta,text = self.leTermopar(k)
+            if k == autotermopread:
+                pass
+            elif self.enablemap[k]:
+                val,juntaaux,text = self.leTermopar(k)
+                rtimeaux = int(time.time()) - self.starttime
+                if juntaaux is not None:
+                    junta = juntaaux
+                # val,junta,text = self.leTermoparADS(k)
                 self.mwindow.setValText(text,k)
-                self.dman.appendTData(k,readtime,val)
+                self.dman.appendTData(k,rtimeaux,val) 
+            else:
+                self.dman.appendEmptyData(k,readtime)
+        self.dman.incrementCtReadings()  
+        # print(time.time() - axx)             
         self.mwindow.setJunta(f"{junta:.2f}  °C")
         for k in range(8,10):
             if self.enablemap[k]:
                 print(f"E{k-8}")
+
         self.mwindow.updatePlot()
         
         

@@ -1,4 +1,5 @@
 import json
+import math
 import numpy as np
 
 from PyQt5 import QtWidgets, uic, QtGui, QtCore
@@ -63,9 +64,10 @@ class MainPlot(GraphicsLayoutWidget):
             self.pitens[k].setLabel('bottom', 'Tempo (s)')
             self.pitens[k].setLabel('left', 'Temperatura (°C)')
             self.pitens[k].setXRange(-self.janelax[k], 0, padding=0.01)
-            self.pitens[k].setYRange(self.miny[k], self.maxy[k], padding=0.01)
-            # self.npontosjanela[k] = int(self.janelax[k]*60/self.samplingperiod) + 1
-            self.npontosjanela[k] = int(self.janelax[k] / self.samplingperiod)
+            self.pitens[k].setYRange(self.miny[k], self.maxy[k], padding=0.01)            
+            # self.npontosjanela[k] = int(self.janelax[k] / self.samplingperiod)
+            # self.vetoreixox[k] = np.linspace(-self.janelax[k], 0, self.npontosjanela[k])
+            self.npontosjanela[k] = math.floor(self.janelax[k] / self.samplingperiod) + 1
             self.vetoreixox[k] = np.linspace(-self.janelax[k], 0, self.npontosjanela[k])
             ctlines = 0
             self.lineidxs = []
@@ -89,7 +91,7 @@ class MainPlot(GraphicsLayoutWidget):
             limf[k] = self.dman.globalctreadings
             if limi[k] < 0:
                 limi[k] = 0
-                npontos[k] = limf[k] - limi[k]
+                npontos[k] = limf[k] - limi[k] #+ 1
             else:
                 npontos[k] = self.npontosjanela[k]
         if npontos[0] > 0:
@@ -98,9 +100,10 @@ class MainPlot(GraphicsLayoutWidget):
                 self.setpointline.setData(np.array([float(-self.janelax[0]), 0.0]),np.array([self.dman.setpoint, self.dman.setpoint]))
             else:
                 self.setpointline.setData([], [])
+            self.vetoreixox[0][0:npontos[0]] = self.dman.TTime[0][limi[0]:limf[0]] - self.dman.TTime[0][limf[0]-1]
             for k,idx in enumerate(self.lineidxs):
-                self.lines[k].setData(self.vetoreixox[0][-npontos[0]:], self.dman.TData[idx][limi[0]:limf[0]])
-                # print(self.vetoreixox[0][-npontos[0]:], self.dman.TData[idx][limi[0]:limf[0]])
+                # self.lines[k].setData(self.vetoreixox[0][-npontos[0]:], self.dman.TData[idx][limi[0]:limf[0]])
+                self.lines[k].setData(self.vetoreixox[0][0:npontos[0]], np.nan_to_num(self.dman.TData[idx][limi[0]:limf[0]]))
             
         else:
             for k in range(len(self.lines)):
@@ -125,7 +128,7 @@ class MainPlot(GraphicsLayoutWidget):
         for k, pi in enumerate(self.pitens):
             if self.flagchangeranges:
                 self.janelax[k] = round(-pi.viewRange()[0][0])
-            self.npontosjanela[k] = int(self.janelax[k] / self.samplingperiod)
+            self.npontosjanela[k] = math.floor(self.janelax[k] / self.samplingperiod) + 1
             self.vetoreixox[k] = np.linspace(-self.janelax[k], 0, self.npontosjanela[k])
 
 

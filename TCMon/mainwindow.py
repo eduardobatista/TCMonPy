@@ -93,7 +93,8 @@ class mainwindow(QtWidgets.QMainWindow):
         # TODO: confirmar se flagsaved = False
         self.flagsaved = True
         self.ui.statusbar.clearMessage()
-        self.driver.dman.resetData()
+        # self.driver.dman.resetData()
+        self.driver.limpaLeituras()
         self.mainplot.setDataman(self.driver.dman)
         self.mainplot.updateFig()
 
@@ -180,6 +181,7 @@ class mainwindow(QtWidgets.QMainWindow):
             # print(f'{keyval} - {ww.isEnabled()}')
             settings.setValue(keyval, ww.value())
             settings.setValue(f'EN{keyval}', str(ww.isEnabled()))
+        settings.setValue("MainPlotCfg",self.mainplot.getConfigString())
 
 
     '''
@@ -222,6 +224,9 @@ class mainwindow(QtWidgets.QMainWindow):
                 ww.setValue(int(settings.value(keyval)))
             if settings.value(f'EN{keyval}') is not None:
                 ww.setEnabled(settings.value(f'EN{keyval}') == 'True')
+        
+        if settings.value("MainPlotCfg") is not None:
+            self.mainplot.parseConfigString(settings.value("MainPlotCfg"))
 
     def writeConfig(self):
         settings = QtCore.QSettings("TCMonSoftware", "TCMon")    
