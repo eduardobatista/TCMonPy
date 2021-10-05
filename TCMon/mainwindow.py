@@ -22,6 +22,7 @@ class mainwindow(QtWidgets.QMainWindow):
         self.checksE = [self.ui.checkE1, self.ui.checkE2]
         self.valsT = [self.ui.valT1,self.ui.valT2,self.ui.valT3,self.ui.valT4,self.ui.valT5,self.ui.valT6,self.ui.valT7,self.ui.valT8]
         self.valsE = [self.ui.valE1, self.ui.valE2]
+        self.valPower = self.ui.valPower
 
         self.disabledWhenRunning = self.checksT + self.checksE + [ self.ui.comboTermoparCtrl, self.ui.comboPorta, 
                                                                    self.ui.comboTipoTermopar, self.ui.comboAmostragem,
@@ -38,6 +39,7 @@ class mainwindow(QtWidgets.QMainWindow):
 
         self.mainplot = MainPlot(nplots=1,samplingperiod=1)
         self.ui.plotWidgetLayout.addWidget(self.mainplot)
+        # self.mainplot.updateSignal.connect(self.updatePlot)
 
         self.driver = None
 
@@ -112,6 +114,9 @@ class mainwindow(QtWidgets.QMainWindow):
             self.valsT[idx].setText(text)
         else:
             self.valsE[idx-8].setText(text)
+    
+    def setPowerText(self,text):
+        self.valPower.setText(text)
 
     def setJunta(self,text):
         self.ui.valRef.setText(text)

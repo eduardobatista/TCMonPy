@@ -10,6 +10,8 @@ from pyqtgraph import PlotWidget, PlotItem, GraphicsWidget, GraphicsLayout, Grap
 
 class MainPlot(GraphicsLayoutWidget):
 
+    updateSignal = QtCore.pyqtSignal()
+
     def __init__(self, nplots=1, samplingperiod=1):
         pg.setConfigOption("background", "w")
         pg.setConfigOption("foreground", "k")
@@ -108,7 +110,7 @@ class MainPlot(GraphicsLayoutWidget):
         else:
             for k in range(len(self.lines)):
                 self.lines[k].setData([], [])
-            self.setpointline.setData([], [])
+            self.setpointline.setData([], [])       
 
 
     def sizeHint(self):
