@@ -103,6 +103,7 @@ class mainwindow(QtWidgets.QMainWindow):
 
     def setDriver(self,driver):
         self.driver = driver
+        self.driver.newdata.connect(self.updatePlot)
     
 
     def setCurTime(self,time):

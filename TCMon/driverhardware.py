@@ -6,6 +6,8 @@ import math
 
 from .dataman import dataman
 
+from PyQt5.QtCore import QTimer,QObject,QThread,pyqtSignal,QMutex,QWaitCondition
+
 
 class PID:
 
@@ -36,9 +38,12 @@ class PID:
         return self.output
 
 
-class driverhardware:
+class driverhardware(QObject):
 
-    def __init__(self, mwindow):        
+    newdata = pyqtSignal()
+
+    def __init__(self, mwindow):   
+        super(). __init__()
         self.mwindow = mwindow
         self.Tsample = 1.0
         self.serial = serial.Serial(port=None,
@@ -49,6 +54,8 @@ class driverhardware:
                                     timeout=400)
         if self.serial.isOpen():
             self.serial.close()
+
+        self.flagstop = False
         self.flagrunning = False
         self.starttime = None
 
@@ -69,8 +76,21 @@ class driverhardware:
         self.dummyjunta = b"\xE7\x00"
 
         self.pid = PID()
-    
 
+        self.timer = QTimer()
+        self.flagsampletimeout = False
+        self.timer.timeout.connect(self.sampletimeout)
+        self.timer.start(1000)
+
+        self.thread = QThread()                    
+        self.moveToThread(self.thread)
+        self.thread.started.connect(self.realizaLeituras)            
+        self.thread.start()
+
+        self.mutex = QMutex()
+        self.condwait = QWaitCondition()
+
+        
     def openSerial(self):
         self.serial.port = self.mwindow.ui.comboPorta.currentText()
         self.serial.open()
@@ -86,14 +106,16 @@ class driverhardware:
                 return True
             self.serial.reset_output_buffer()
             self.serial.reset_input_buffer()
-            time.sleep(0.1)
+            # time.sleep(0.1)
+            QThread.msleep(100)
         raise Exception("Handshake com dispositivo falhou.")
 
 
     def writeThermType(self,tipo):
         cmd = f's{tipo}'[0:2].encode() # Comando para setar tipo de termopar.
         self.serial.write(cmd)
-        time.sleep(0.05)
+        # time.sleep(0.05)
+        QThread.msleep(50)
         aux = self.serial.read(2)
         if aux.decode() != f'k{tipo}':
             print("Falhou!") # TODO: Raise exception!
@@ -102,12 +124,10 @@ class driverhardware:
     def writeManualCtrlLevel(self,level=None):
         if self.dummymode: 
             return
-        if level is None:
-            # convertedlevel = 255 - int(255.0*self.manuallevel/100.0) # Adaptando considerando que 100% = 0 e 0% = 255  
-            convertedlevel = int(round(100.0*self.manuallevel/100.0))
+        if level is None: 
+            convertedlevel = int(round(self.manuallevel))
         else:
-            # convertedlevel = 255 - int(255.0*level/100.0)
-            convertedlevel = int(round(100.0*level/100.0))
+            convertedlevel = int(round(level))
         cmd = [ord('m'), convertedlevel]
         self.serial.write(cmd)
         # TODO: get response from system to confirm.
@@ -143,9 +163,11 @@ class driverhardware:
             try:
                 if not self.dummymode:
                     self.openSerial()
-                    time.sleep(1.6)  # TODO: Check if this time can be reduced.
+                    # time.sleep(1.6)  # TODO: Check if this time can be reduced.
+                    QThread.msleep(1500)
                     self.handshake()
-                    time.sleep(0.1)
+                    # time.sleep(0.1)
+                    QThread.msleep(100)
                     self.writeThermType(tipotermopar)
                 self.flagrunning = True
                 self.Tsample = float(amostragem) # TODO: What to do if user changes sampling rate without resetting data?
@@ -154,7 +176,11 @@ class driverhardware:
                 if self.starttime is None:
                     self.dman.resetData(amostragem)
                     self.starttime = int(round(time.time() * 1000) / 1000)
-                self.realizaLeituras()
+                # self.realizaLeituras()                
+                self.flagstop = False
+                self.flagrunning = True
+                self.timer.setInterval(amostragem * 1000)
+                
             except Exception as e:
                 self.flagrunning = False
                 if self.serial.isOpen():
@@ -168,7 +194,7 @@ class driverhardware:
 
     def paraLeituras(self):
         if self.flagrunning:
-            self.flagrunning = False            
+            self.flagstop = True            
 
 
     def changeSetPoint(self,value):
@@ -194,13 +220,15 @@ class driverhardware:
 
     def leTermopar(self,idx):
         if self.dummymode:
-            time.sleep(0.15)
+            # time.sleep(0.15)
+            QThread.msleep(150)
             resp = self.dummytable[idx] + self.dummyjunta
         else:
             cmd = f'r{idx}'.encode() # Comando para leitura: uma string com r seguido do número (como string)
             self.serial.write(cmd)
-            time.sleep(0.15)
-            resp = self.serial.read(5)  # Resposta sempre em 5 bytes: os 3 primeiros correspondem à leitura, os outros 2 à junta fria. 
+            # time.sleep(0.15)
+            QThread.msleep(150)
+            resp = self.serial.read(5)  # Resposta sempre em 5 bytes: os 3 primeiros correspondem à leitura, os outros 2 à junta fria.
     
         if resp[0] == 0x80:
             if resp[2] == 0x00:
@@ -222,69 +250,99 @@ class driverhardware:
         return val,juntafria,text
 
 
+    def sampletimeout(self):
+        # if (self.flagrunning):
+        #     self.flagsampletimeout = True
+        # print(time.time())
+        self.condwait.wakeAll()
+
+
     def realizaLeituras(self):
 
-        if not self.flagrunning:   
-            self.ctrlOff()        
-            if self.serial.isOpen():                
-                self.serial.close()
-            return
-        threading.Timer(self.Tsample, self.realizaLeituras).start() # TODO: Create mechanism to avoid parallel running
+        while True: 
 
-        readtime = int(time.time()) - self.starttime
-        self.mwindow.setCurTime(readtime)
+            if not self.flagrunning:
+                
+                QThread.sleep(1)
 
-        autotermopread = -1
-        if (self.tipoctrl == 'Off'):
-            self.ctrlOff()
-            self.dman.setpoint = None
-            self.mwindow.setPowerText(f"0%")
-        elif (self.tipoctrl == 'Manual'):
-            self.writeManualCtrlLevel()
-            self.dman.setpoint = None
-            self.mwindow.setPowerText(f"{self.manuallevel:.0f}%")
-        elif (self.tipoctrl == 'Auto'):
-            self.dman.setpoint = self.pid.setpoint
-            val,juntaaux,text = self.leTermopar(self.termoparctrl)
-            if not math.isnan(val):
-                self.pid.update(val)
-                self.mwindow.setPowerText(f"{self.pid.output:.0f}%")
-                self.writeManualCtrlLevel(level=self.pid.output)
-            else: 
-                self.writeManualCtrlLevel(level=0)
-            rtimeaux = int(time.time()) - self.starttime
-            if juntaaux is not None:
-                junta = juntaaux
-            # val,junta,text = self.leTermoparADS(k)
-            self.mwindow.setValText(text,self.termoparctrl)
-            self.dman.appendTData(self.termoparctrl,rtimeaux,val)
-            autotermopread = self.termoparctrl
-        
-        junta = 0
-        # axx = time.time()
-        for k in range(8):
-            if k == autotermopread:
-                pass
-            elif self.enablemap[k]:
-                val,juntaaux,text = self.leTermopar(k)
-                rtimeaux = int(time.time()) - self.starttime
-                if juntaaux is not None:
-                    junta = juntaaux
-                # val,junta,text = self.leTermoparADS(k)
-                self.mwindow.setValText(text,k)
-                self.dman.appendTData(k,rtimeaux,val) 
             else:
-                self.dman.appendEmptyData(k,readtime)
-        self.dman.incrementCtReadings()  
-        # print(time.time() - axx)             
-        self.mwindow.setJunta(f"{junta:.2f}  °C")
 
-        # TODO: Readings if auxiliary inputs:
-        # for k in range(8,10):
-        #     if self.enablemap[k]:
-        #         print(f"E{k-8}")
+                if self.flagstop:  
 
-        # self.mwindow.updatePlot()
-        self.mwindow.updatePlot()
+                    self.ctrlOff()        
+                    if self.serial.isOpen():                
+                        self.serial.close()
+                    self.flagrunning = False
+                    self.flagstop = False
+
+                else:
+
+                    readtime = int(time.time()) - self.starttime
+                    self.mwindow.setCurTime(readtime)
+
+                    autotermopread = -1
+                    junta = 0
+                    
+                    if (self.tipoctrl == 'Off'):
+                        self.ctrlOff()
+                        self.dman.setpoint = None
+                        self.mwindow.setPowerText(f"0%")
+                    elif (self.tipoctrl == 'Manual'):
+                        self.writeManualCtrlLevel()
+                        self.dman.setpoint = None
+                        self.mwindow.setPowerText(f"{self.manuallevel:.0f}%")
+                    elif (self.tipoctrl == 'Auto'):
+                        self.dman.setpoint = self.pid.setpoint
+                        val,juntaaux,text = self.leTermopar(self.termoparctrl)
+                        if not math.isnan(val):
+                            self.pid.update(val)
+                            self.mwindow.setPowerText(f"{self.pid.output:.0f}%")
+                            self.writeManualCtrlLevel(level=self.pid.output)
+                        else: 
+                            self.writeManualCtrlLevel(level=0)
+                        rtimeaux = int(time.time()) - self.starttime
+                        if juntaaux is not None:
+                            junta = juntaaux
+                        # val,junta,text = self.leTermoparADS(k)
+                        self.mwindow.setValText(text,self.termoparctrl)
+                        self.dman.appendTData(self.termoparctrl,rtimeaux,val)
+                        autotermopread = self.termoparctrl
+
+                    # axx = time.time()
+                    for k in range(8):
+                        if k == autotermopread:
+                            pass
+                        elif self.enablemap[k]:
+                            val,juntaaux,text = self.leTermopar(k)
+                            rtimeaux = int(time.time()) - self.starttime
+                            if juntaaux is not None:
+                                junta = juntaaux
+                            # val,junta,text = self.leTermoparADS(k)
+                            self.mwindow.setValText(text,k)
+                            self.dman.appendTData(k,rtimeaux,val) 
+                        else:
+                            self.dman.appendEmptyData(k,readtime)
+                    self.dman.incrementCtReadings()  
+                    # print(time.time() - axx)             
+                    self.mwindow.setJunta(f"{junta:.2f}  °C")
+
+                    # TODO: Readings if auxiliary inputs:
+                    # for k in range(8,10):
+                    #     if self.enablemap[k]:
+                    #         print(f"E{k-8}")
+
+                    # self.mwindow.updatePlot()
+                    # self.mwindow.updatePlot()
+                    self.newdata.emit()
+
+                    # QThread.sleep(1)
+                    # while not self.flagsampletimeout:
+                    #     QThread.msleep(100)
+                    # self.flagsampletimeout = False
+                    self.mutex.lock()
+                    self.condwait.wait(self.mutex)
+                    self.mutex.unlock()
+                    # print(".")
+
         
         
