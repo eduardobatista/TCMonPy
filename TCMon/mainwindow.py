@@ -1,10 +1,11 @@
 from pathlib import Path
+from os import getenv
 
 from .TCMonWindow import Ui_MainWindow
 from .MainPlot import MainPlot
 
 from PyQt5 import QtWidgets, QtGui, QtCore
-from PyQt5.QtWidgets import QMessageBox
+from PyQt5.QtWidgets import QMessageBox,QFileDialog
 
 class mainwindow(QtWidgets.QMainWindow):
 
@@ -25,7 +26,7 @@ class mainwindow(QtWidgets.QMainWindow):
         self.valPower = self.ui.valPower
 
         self.disabledWhenRunning = self.checksT + self.checksE + [ self.ui.comboTermoparCtrl, self.ui.comboPorta, 
-                                                                   self.ui.comboTipoTermopar, self.ui.comboAmostragem,
+                                                                   self.ui.comboTipoTermopar,
                                                                    self.ui.spinKd, self.ui.spinKi, self.ui.spinKp, self.ui.bLimpar]
 
         self.ui.bIniciar.clicked.connect(self.bInit)
@@ -41,6 +42,12 @@ class mainwindow(QtWidgets.QMainWindow):
         self.ui.plotWidgetLayout.addWidget(self.mainplot)
         # self.mainplot.updateSignal.connect(self.updatePlot)
 
+        self.ui.spinJanela.editingFinished.connect(self.changePlotWindow)
+        self.ui.bPageDown.clicked.connect(self.mainplot.pageDown)
+        self.ui.bPageUp.clicked.connect(self.mainplot.pageUp)
+
+        self.ui.actionSalvar_Dados.triggered.connect(self.saveData)
+
         self.driver = None
 
         self.flagsaved = True
@@ -48,6 +55,24 @@ class mainwindow(QtWidgets.QMainWindow):
         self.saveprefix = "TCMon"
 
         self.readConfig()
+
+    
+    def saveData(self):        
+        if self.driver.flagrunning:
+            self.ui.statusbar.showMessage("Leituras sendo realizadas, dados não podem ser salvos.")
+            return
+        if self.driver.dman.globalctreadings == 0:
+            self.ui.statusbar.showMessage("Nada a ser salvo...")
+            return
+        filename = QFileDialog.getSaveFileName(self, "Salvar Arquivo", getenv('HOME'), 'csv (*.csv)')
+        if (filename[0] != ''):
+            try:
+                self.driver.dman.saveFile(filename[0])
+                self.flagsaved = True
+            except Exception as err:
+                QMessageBox.question(self.app, "Erro!", str(err), QMessageBox.Ok)
+        
+
     
     
     def bInit(self):
@@ -56,7 +81,7 @@ class mainwindow(QtWidgets.QMainWindow):
             if self.driver.flagrunning:
                 self.driver.paraLeituras()
                 for comp in self.disabledWhenRunning:
-                    comp.setEnabled(True)  
+                    comp.setEnabled(True)                 
                 # self.ui.spinCtrlManual.setEnabled(True)
                 # self.ui.spinSetPoint.setEnabled(True)
                 for val in self.valsT+self.valsE:
@@ -64,10 +89,11 @@ class mainwindow(QtWidgets.QMainWindow):
             else:
                 for comp in self.disabledWhenRunning:
                     comp.setEnabled(False)
-                enablemap = []
+                self.ui.comboAmostragem.setEnabled(False)
+                self.enablemap = []
                 for val,chk in zip(self.valsT+self.valsE,self.checksT+self.checksE):
-                    enablemap.append(chk.isChecked())
-                    if not enablemap[-1]:
+                    self.enablemap.append(chk.isChecked())
+                    if not self.enablemap[-1]:
                         val.setEnabled(False)                  
                 # if not self.ui.checkCtrlAuto.isChecked():
                 #     self.ui.spinSetPoint.setEnabled(False)                    
@@ -77,8 +103,8 @@ class mainwindow(QtWidgets.QMainWindow):
                 self.setPointChanged()
                 self.manualCtrlLevelChanged()                
                 amostr = self.ui.comboAmostragem.currentIndex() + 1
-                self.mainplot.plotSetup(amostr,enablemap,self.driver.dman)            
-                self.driver.iniciaLeituras(amostr,enablemap,self.ui.comboTipoTermopar.currentText())
+                self.mainplot.plotSetup(amostr,self.enablemap,self.driver.dman)            
+                self.driver.iniciaLeituras(amostr,self.enablemap,self.ui.comboTipoTermopar.currentText())
 
 
     def errorStarting(self,msg):
@@ -99,31 +125,45 @@ class mainwindow(QtWidgets.QMainWindow):
         self.driver.limpaLeituras()
         self.mainplot.setDataman(self.driver.dman)
         self.mainplot.updateFig()
+        self.ui.comboAmostragem.setEnabled(True)
 
 
     def setDriver(self,driver):
         self.driver = driver
-        self.driver.newdata.connect(self.updatePlot)
+        self.driver.newdata.connect(self.updateGUI)
     
 
-    def setCurTime(self,time):
-        self.ui.timeLabel.setText(f'{time} s')
+    # def setCurTime(self,time):
+    #     self.ui.timeLabel.setText(f'{time} s')
 
-
-    def setValText(self,text,idx):
-        if idx <= 8:
-            self.valsT[idx].setText(text)
-        else:
-            self.valsE[idx-8].setText(text)
+    # def setValText(self,text,idx):
+    #     if idx <= 8:
+    #         self.valsT[idx].setText(text)
+    #     else:
+    #         self.valsE[idx-8].setText(text)
     
-    def setPowerText(self,text):
-        self.valPower.setText(text)
+    # def setPowerText(self,text):
+    #     self.valPower.setText(text)
 
-    def setJunta(self,text):
-        self.ui.valRef.setText(text)
+    # def setJunta(self,text):
+    #     self.ui.valRef.setText(text)
 
-    def updatePlot(self):
+    def changePlotWindow(self):
+        newwindow = self.ui.spinJanela.value()
+        self.mainplot.setTimeWindow(newwindow)
+        if not self.driver.flagrunning:
+            self.mainplot.updateFig()
+
+
+    def updateGUI(self,mydict):       
+        self.ui.timeLabel.setText(f'{mydict["readtime"]} s')      
+        self.ui.valRef.setText(mydict["junta"])
+        for k in range(8):
+            if self.enablemap[k]:
+                self.valsT[k].setText(mydict[f"termop{k}"])
+        self.valPower.setText(mydict["power"])
         self.mainplot.updateFig()
+        QtCore.QCoreApplication.processEvents()
 
     def ctrlAutoChanged(self):
         if self.ui.checkCtrlAuto.isChecked():
@@ -233,6 +273,7 @@ class mainwindow(QtWidgets.QMainWindow):
         
         if settings.value("MainPlotCfg") is not None:
             self.mainplot.parseConfigString(settings.value("MainPlotCfg"))
+            self.ui.spinJanela.setValue(self.mainplot.janelax[0])
 
     def writeConfig(self):
         settings = QtCore.QSettings("TCMonSoftware", "TCMon")    

@@ -5,6 +5,7 @@ import struct
 import math
 
 from .dataman import dataman
+from . import mytimer, wthread, mutex, condwait
 
 from PyQt5.QtCore import QTimer,QObject,QThread,pyqtSignal,QMutex,QWaitCondition
 
@@ -19,16 +20,19 @@ class PID:
         self.ts = ts
         self.error = 0
         self.output = 0
+        self.integralsat = 50
 
     def reset(self):
         self.error = 0
         self.output = 0
         self.integral = 0
 
-    def update(self,reading):
+    def update(self,reading):        
         self.lasterror = self.error
         self.error = self.setpoint - reading
         self.integral = self.integral + (self.error*self.ts)
+        if abs(self.integral) > self.integralsat:
+            self.integral = math.copysign(self.integralsat,self.integral)
         self.derivada = (self.error - self.lasterror) / self.ts
         self.output = self.kp * self.error + self.ki * self.integral + self.kd * self.derivada
         if self.output > 100.0:
@@ -40,7 +44,7 @@ class PID:
 
 class driverhardware(QObject):
 
-    newdata = pyqtSignal()
+    newdata = pyqtSignal(dict)
 
     def __init__(self, mwindow):   
         super(). __init__()
@@ -58,6 +62,7 @@ class driverhardware(QObject):
         self.flagstop = False
         self.flagrunning = False
         self.starttime = None
+        self.flagstart = False
 
         # Enable map: quais termopares e entradas devem ser lidas
         self.enablemap = [False,False,False,False,False,False,False,False,False,False]
@@ -66,8 +71,8 @@ class driverhardware(QObject):
         self.termoparctrl = 0
         self.manuallevel = 0.0
 
-        self.MAX_TIME = 360    # 360 minutos
-        self.dman = dataman(360)
+        self.MAX_TIME = 60 * 24 # 24 horas em minutos
+        self.dman = dataman(self.MAX_TIME)
 
         self.dummymode = False
         self.dummytable = [b"\x06\x4F\x00",b"\x01\x90\x00",b"\x00\x01\x00",
@@ -76,19 +81,6 @@ class driverhardware(QObject):
         self.dummyjunta = b"\xE7\x00"
 
         self.pid = PID()
-
-        self.timer = QTimer()
-        self.flagsampletimeout = False
-        self.timer.timeout.connect(self.sampletimeout)
-        self.timer.start(1000)
-
-        self.thread = QThread()                    
-        self.moveToThread(self.thread)
-        self.thread.started.connect(self.realizaLeituras)            
-        self.thread.start()
-
-        self.mutex = QMutex()
-        self.condwait = QWaitCondition()
 
         
     def openSerial(self):
@@ -160,32 +152,11 @@ class driverhardware(QObject):
 
     def iniciaLeituras(self,amostragem,enablemap,tipotermopar):
         if not self.flagrunning:
-            try:
-                if not self.dummymode:
-                    self.openSerial()
-                    # time.sleep(1.6)  # TODO: Check if this time can be reduced.
-                    QThread.msleep(1500)
-                    self.handshake()
-                    # time.sleep(0.1)
-                    QThread.msleep(100)
-                    self.writeThermType(tipotermopar)
-                self.flagrunning = True
-                self.Tsample = float(amostragem) # TODO: What to do if user changes sampling rate without resetting data?
-                self.enablemap = enablemap
-                self.pid.reset()
-                if self.starttime is None:
-                    self.dman.resetData(amostragem)
-                    self.starttime = int(round(time.time() * 1000) / 1000)
-                # self.realizaLeituras()                
-                self.flagstop = False
-                self.flagrunning = True
-                self.timer.setInterval(amostragem * 1000)
-                
-            except Exception as e:
-                self.flagrunning = False
-                if self.serial.isOpen():
-                    self.serial.close()
-                self.mwindow.errorStarting(str(e))
+            self.Tsample = float(amostragem) # TODO: What to do if user changes sampling rate without resetting data?
+            mytimer.setTimerInterval(amostragem * 1000)
+            self.tipotermopar = tipotermopar            
+            self.enablemap = enablemap
+            self.flagstart = True
 
     def limpaLeituras(self):
         self.starttime = None
@@ -229,7 +200,7 @@ class driverhardware(QObject):
             # time.sleep(0.15)
             QThread.msleep(150)
             resp = self.serial.read(5)  # Resposta sempre em 5 bytes: os 3 primeiros correspondem à leitura, os outros 2 à junta fria.
-    
+
         if resp[0] == 0x80:
             if resp[2] == 0x00:
                 text = "Aberto"
@@ -254,12 +225,43 @@ class driverhardware(QObject):
         # if (self.flagrunning):
         #     self.flagsampletimeout = True
         # print(time.time())
-        self.condwait.wakeAll()
+        condwait.wakeAll()
+        # print(time.time())
 
 
     def realizaLeituras(self):
 
+        mydict = {}
+
         while True: 
+
+            if self.flagstart:
+                if not self.flagrunning:
+                    try:
+                        if not self.dummymode:
+                            self.openSerial()
+                            # time.sleep(1.6)  # TODO: Check if this time can be reduced.
+                            QThread.msleep(1500)
+                            self.handshake()
+                            # time.sleep(0.1)
+                            QThread.msleep(100)
+                            self.writeThermType(self.tipotermopar)
+                        self.flagrunning = True                        
+                        self.pid.reset()
+                        if self.starttime is None:
+                            self.dman.resetData(int(self.Tsample))
+                            self.starttime = int(round(time.time() * 1000) / 1000)
+                        # self.realizaLeituras()                
+                        self.flagstop = False
+                        self.flagrunning = True
+                        
+                        
+                    except Exception as e:
+                        self.flagrunning = False
+                        if self.serial.isOpen():
+                            self.serial.close()
+                        self.mwindow.errorStarting(str(e))
+                self.flagstart = False
 
             if not self.flagrunning:
                 
@@ -277,8 +279,11 @@ class driverhardware(QObject):
 
                 else:
 
+                    axxx = time.time()
+
                     readtime = int(time.time()) - self.starttime
-                    self.mwindow.setCurTime(readtime)
+                    # self.mwindow.setCurTime(readtime)
+                    mydict['readtime'] = readtime
 
                     autotermopread = -1
                     junta = 0
@@ -286,25 +291,29 @@ class driverhardware(QObject):
                     if (self.tipoctrl == 'Off'):
                         self.ctrlOff()
                         self.dman.setpoint = None
-                        self.mwindow.setPowerText(f"0%")
+                        # self.mwindow.setPowerText(f"0%")
+                        mydict["power"] = f"0%"
                     elif (self.tipoctrl == 'Manual'):
                         self.writeManualCtrlLevel()
                         self.dman.setpoint = None
-                        self.mwindow.setPowerText(f"{self.manuallevel:.0f}%")
+                        # self.mwindow.setPowerText(f"{self.manuallevel:.0f}%")
+                        mydict["power"] = f"{self.manuallevel:.0f}%"
                     elif (self.tipoctrl == 'Auto'):
                         self.dman.setpoint = self.pid.setpoint
                         val,juntaaux,text = self.leTermopar(self.termoparctrl)
                         if not math.isnan(val):
                             self.pid.update(val)
-                            self.mwindow.setPowerText(f"{self.pid.output:.0f}%")
+                            # self.mwindow.setPowerText(f"{self.pid.output:.0f}%")                            
+                            mydict["power"] = f"{self.pid.output:.0f}%"
                             self.writeManualCtrlLevel(level=self.pid.output)
                         else: 
                             self.writeManualCtrlLevel(level=0)
+                            mydict["power"] = "0%"
                         rtimeaux = int(time.time()) - self.starttime
                         if juntaaux is not None:
                             junta = juntaaux
-                        # val,junta,text = self.leTermoparADS(k)
-                        self.mwindow.setValText(text,self.termoparctrl)
+                        # self.mwindow.setValText(text,self.termoparctrl)
+                        mydict[f"termop{self.termoparctrl}"] = text 
                         self.dman.appendTData(self.termoparctrl,rtimeaux,val)
                         autotermopread = self.termoparctrl
 
@@ -316,15 +325,16 @@ class driverhardware(QObject):
                             val,juntaaux,text = self.leTermopar(k)
                             rtimeaux = int(time.time()) - self.starttime
                             if juntaaux is not None:
-                                junta = juntaaux
-                            # val,junta,text = self.leTermoparADS(k)
-                            self.mwindow.setValText(text,k)
+                                junta = juntaaux                            
+                            # self.mwindow.setValText(text,k)
+                            mydict[f"termop{k}"] = text
                             self.dman.appendTData(k,rtimeaux,val) 
                         else:
                             self.dman.appendEmptyData(k,readtime)
                     self.dman.incrementCtReadings()  
                     # print(time.time() - axx)             
-                    self.mwindow.setJunta(f"{junta:.2f}  °C")
+                    # self.mwindow.setJunta(f"{junta:.2f}  °C")
+                    mydict["junta"] = f"{junta:.2f}  °C"
 
                     # TODO: Readings if auxiliary inputs:
                     # for k in range(8,10):
@@ -333,15 +343,19 @@ class driverhardware(QObject):
 
                     # self.mwindow.updatePlot()
                     # self.mwindow.updatePlot()
-                    self.newdata.emit()
+                    self.newdata.emit(mydict)
+
+                    # print(time.time() - axxx)
+                    # print(self.Tsample)
 
                     # QThread.sleep(1)
                     # while not self.flagsampletimeout:
                     #     QThread.msleep(100)
                     # self.flagsampletimeout = False
-                    self.mutex.lock()
-                    self.condwait.wait(self.mutex)
-                    self.mutex.unlock()
+                    mutex.lock()
+                    condwait.wait(mutex)
+                    mutex.unlock()
+                    # QThread.msleep(500)
                     # print(".")
 
         

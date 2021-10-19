@@ -45,3 +45,36 @@ class dataman:
     def incrementCtReadings(self):
         self.globalctreadings += 1
 
+    
+    def saveFile(self,filepath):
+
+        if self.globalctreadings == 0:
+            raise "Nothing to save!"
+
+        hasData = [True] * 8
+        cttermops = 0
+        columns = []
+        for k in range(8):
+            if np.all(np.isnan(self.TData[k][:self.globalctreadings])):
+                hasData[k] = False
+            else:
+                columns.append(f"Tempo{k+1}")
+                columns.append(f"Termopar{k+1}")
+                cttermops += 1
+
+        if True not in hasData:
+            raise "Nothing to save!!!"
+
+        mydata = np.zeros((self.globalctreadings,cttermops*2))
+        ctt = 0
+        for k in range(8):
+            if hasData[k]:
+                mydata[:,ctt] = self.TTime[k][:self.globalctreadings]
+                mydata[:,ctt+1] = self.TData[k][:self.globalctreadings]
+                ctt += 2        
+
+        dataframe = pd.DataFrame(mydata,columns=columns)
+        dataframe.to_csv(filepath,sep=";",decimal=",",index=False)
+        
+
+        
