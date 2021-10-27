@@ -7,7 +7,7 @@ import math
 from .dataman import dataman
 from . import mytimer, wthread, mutex, condwait
 
-from PyQt5.QtCore import QTimer,QObject,QThread,pyqtSignal,QMutex,QWaitCondition
+from PySide2.QtCore import QTimer,QObject,QThread,Signal,QMutex,QWaitCondition
 
 
 class PID:
@@ -44,7 +44,7 @@ class PID:
 
 class driverhardware(QObject):
 
-    newdata = pyqtSignal(dict)
+    newdata = Signal(dict)
 
     def __init__(self, mwindow):   
         super(). __init__()

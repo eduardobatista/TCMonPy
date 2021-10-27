@@ -1,8 +1,8 @@
 import os
 import sys
 
-from PyQt5 import QtWidgets
-from PyQt5.QtCore import QThread,QTimer,QMutex,QWaitCondition
+from PySide2 import QtWidgets
+from PySide2.QtCore import QThread,QTimer,QMutex,QWaitCondition
 
 from . import mytimer, wthread, condwait, mutex
 
@@ -31,4 +31,4 @@ mwindow.setDriver(driver)
 
 mwindow.show()
 
-sys.exit(app.exec())
+sys.exit(app.exec_())

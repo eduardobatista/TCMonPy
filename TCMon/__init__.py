@@ -1,4 +1,4 @@
-from PyQt5.QtCore import QThread,QTimer,QMutex,QWaitCondition
+from PySide2.QtCore import QThread,QTimer,QMutex,QWaitCondition
 
 mutex = QMutex()
 

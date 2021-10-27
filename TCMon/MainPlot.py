@@ -3,15 +3,15 @@ import math
 import numpy as np
 import time
 
-from PyQt5 import QtWidgets, uic, QtGui, QtCore
-from PyQt5.QtWidgets import QMessageBox, QFileDialog, QDialog, QVBoxLayout
+from PySide2 import QtWidgets, QtGui, QtCore
+from PySide2.QtWidgets import QMessageBox, QFileDialog, QDialog, QVBoxLayout
 
 import pyqtgraph as pg
 from pyqtgraph import PlotWidget, PlotItem, GraphicsWidget, GraphicsLayout, GraphicsLayoutWidget
 
 class MainPlot(GraphicsLayoutWidget):
 
-    updateSignal = QtCore.pyqtSignal()
+    updateSignal = QtCore.Signal()
 
     def __init__(self, nplots=1, samplingperiod=1):
         pg.setConfigOption("background", "w")

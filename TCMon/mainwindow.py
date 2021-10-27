@@ -3,9 +3,11 @@ from os import getenv
 
 from .TCMonWindow import Ui_MainWindow
 from .MainPlot import MainPlot
+from .Updater import Updater
 
-from PyQt5 import QtWidgets, QtGui, QtCore
-from PyQt5.QtWidgets import QMessageBox,QFileDialog
+from PySide2 import QtWidgets, QtGui, QtCore
+from PySide2.QtWidgets import QMessageBox,QFileDialog,QMessageBox,QProgressDialog
+from PySide2.QtCore import QThread
 
 class mainwindow(QtWidgets.QMainWindow):
 
@@ -47,6 +49,7 @@ class mainwindow(QtWidgets.QMainWindow):
         self.ui.bPageUp.clicked.connect(self.mainplot.pageUp)
 
         self.ui.actionSalvar_Dados.triggered.connect(self.saveData)
+        self.ui.actionAtualizarViaGit.triggered.connect(self.updateViaGit)
 
         self.driver = None
 
@@ -55,6 +58,21 @@ class mainwindow(QtWidgets.QMainWindow):
         self.saveprefix = "TCMon"
 
         self.readConfig()
+
+
+    def updateViaGit(self):  
+        reply = QMessageBox().question(self,"Atualização","Deseja atualizar o software?")
+        if (reply == QMessageBox.Yes):
+            self.pdialog = QProgressDialog("Updating files...", "Abort update", 0, 100, self)
+            # self.pdialog.setWindowModality(.WindowModal)
+            self.pdialog.show()
+            self.updt = Updater()
+            self.updt.updated.connect(self.progressUpdate)
+            self.updt.start()
+    
+
+    def progressUpdate(self,val):
+        self.pdialog.setValue(val)
 
     
     def saveData(self):        
