@@ -1,0 +1,1 @@
+pyside2-uic --output="../TCMon/TCMonWindow.py" TCMon.ui

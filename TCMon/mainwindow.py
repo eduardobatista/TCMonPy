@@ -4,6 +4,7 @@ from os import getenv
 from .TCMonWindow import Ui_MainWindow
 from .MainPlot import MainPlot
 from .Updater import Updater
+from .driverhardware import driverhardware
 
 from PySide2 import QtWidgets, QtGui, QtCore
 from PySide2.QtWidgets import QMessageBox,QFileDialog,QMessageBox,QProgressDialog
@@ -17,7 +18,7 @@ class mainwindow(QtWidgets.QMainWindow):
         self.app = app
         self.ui = Ui_MainWindow()
         self.ui.setupUi(self)
-        self.workdir = "D://"
+        self.workdir = Path.home()
         self.saveconfigtypes = [QtWidgets.QCheckBox, QtWidgets.QComboBox,
                                 QtWidgets.QDoubleSpinBox, QtWidgets.QSpinBox, QtWidgets.QLineEdit]
         
@@ -111,12 +112,9 @@ class mainwindow(QtWidgets.QMainWindow):
                 self.enablemap = []
                 for val,chk in zip(self.valsT+self.valsE,self.checksT+self.checksE):
                     self.enablemap.append(chk.isChecked())
-                    if not self.enablemap[-1]:
-                        val.setEnabled(False)                  
-                # if not self.ui.checkCtrlAuto.isChecked():
-                #     self.ui.spinSetPoint.setEnabled(False)                    
-                # if not self.ui.checkCtrlManual.isChecked():
-                #     self.ui.spinCtrlManual.setEnabled(False)
+                    val.setEnabled(chk.isChecked())
+                self.ui.spinSetPoint.setEnabled(self.ui.checkCtrlAuto.isChecked())
+                self.ui.spinCtrlManual.setEnabled(self.ui.checkCtrlManual.isChecked())
                 self.configCtrl()
                 self.setPointChanged()
                 self.manualCtrlLevelChanged()                
@@ -146,8 +144,23 @@ class mainwindow(QtWidgets.QMainWindow):
         self.ui.comboAmostragem.setEnabled(True)
 
 
-    def setDriver(self,driver):
+    def populatePorts(self):
+        self.ui.comboPorta.clear()
+        ports = self.driver.listPorts()
+        for port, desc, hwid in sorted(ports):
+            # print("{}: {} [{}]".format(port, desc, hwid))
+            # if port == self.Port:
+            #     port = f">{port}"
+            self.ui.comboPorta.addItem(port)
+            # self.ui.menuSelecionar_Porta.addAction(port)
+        # for acc in self.ui.menuSelecionar_Porta.actions():
+        #     self.mapper.setMapping(acc, acc.text())
+        #     acc.triggered.connect(self.mapper.map)
+
+
+    def setDriver(self,driver : driverhardware):
         self.driver = driver
+        self.populatePorts()
         self.driver.newdata.connect(self.updateGUI)
     
 
@@ -183,23 +196,30 @@ class mainwindow(QtWidgets.QMainWindow):
         self.mainplot.updateFig()
         QtCore.QCoreApplication.processEvents()
 
+
     def ctrlAutoChanged(self):
-        if self.ui.checkCtrlAuto.isChecked():
+        if self.ui.checkCtrlAuto.isChecked():            
             self.ui.checkCtrlManual.setChecked(False)
+            self.ui.spinCtrlManual.setEnabled(False)
+            self.ui.spinSetPoint.setEnabled(True)
             if self.driver is not None:
                 self.driver.changeCtrlType('Auto')
                 self.setPointChanged()
         else:
+            self.ui.spinSetPoint.setEnabled(False)
             if (not self.ui.checkCtrlManual.isChecked()) and (self.driver is not None):
                 self.driver.changeCtrlType('Off')
         
     def ctrlManualChanged(self):
         if self.ui.checkCtrlManual.isChecked():
             self.ui.checkCtrlAuto.setChecked(False)
+            self.ui.spinSetPoint.setEnabled(False)
+            self.ui.spinCtrlManual.setEnabled(True)
             if self.driver is not None:
                 self.driver.changeCtrlType('Manual')
                 self.manualCtrlLevelChanged()
         else:
+            self.ui.spinCtrlManual.setEnabled(False)
             if (not self.ui.checkCtrlAuto.isChecked()) and (self.driver is not None):
                 self.driver.changeCtrlType('Off')
 

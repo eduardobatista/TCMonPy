@@ -80,7 +80,9 @@ class MainPlot(GraphicsLayoutWidget):
             self.pitens[k].clear()
             for idx,en in enumerate(enablemap):
                 if en:
-                    self.lines.append( self.pitens[k].plot(np.array([]), np.array([]), pen=self.pens[ctlines], name=f"Termopar {idx+1}") )
+                    self.lines.append( self.pitens[k].plot(np.array([]), np.array([]),
+                                       pen=self.pens[ctlines], 
+                                       name=f"Termopar {idx+1}" if (idx < 8) else f"Entrada {(idx%7)}" ) )
                     self.lines[-1].setClipToView(True)
                     ctlines += 1
                     self.lineidxs.append(idx)

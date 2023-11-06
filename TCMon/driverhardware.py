@@ -1,4 +1,5 @@
 import serial
+import serial.tools.list_ports
 import time
 import threading
 import struct
@@ -81,6 +82,11 @@ class driverhardware(QObject):
         self.dummyjunta = b"\xE7\x00"
 
         self.pid = PID()
+
+
+    def listPorts(self):
+        ports = serial.tools.list_ports.comports()
+        return ports
 
         
     def openSerial(self):
