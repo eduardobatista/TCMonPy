@@ -90,7 +90,7 @@ class driverhardware(QObject):
 
         
     def openSerial(self):
-        self.serial.port = self.mwindow.ui.comboPorta.currentText()
+        self.serial.port = self.mwindow.Port
         self.serial.open()
 
 

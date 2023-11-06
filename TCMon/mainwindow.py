@@ -28,7 +28,7 @@ class mainwindow(QtWidgets.QMainWindow):
         self.valsE = [self.ui.valE1, self.ui.valE2]
         self.valPower = self.ui.valPower
 
-        self.disabledWhenRunning = self.checksT + self.checksE + [ self.ui.comboTermoparCtrl, self.ui.comboPorta, 
+        self.disabledWhenRunning = self.checksT + self.checksE + [ self.ui.comboTermoparCtrl, 
                                                                    self.ui.comboTipoTermopar,
                                                                    self.ui.spinKd, self.ui.spinKi, self.ui.spinKp, self.ui.bLimpar]
 
@@ -51,6 +51,18 @@ class mainwindow(QtWidgets.QMainWindow):
 
         self.ui.actionSalvar_Dados.triggered.connect(self.saveData)
         self.ui.actionAtualizarViaGit.triggered.connect(self.updateViaGit)
+
+        self.Port = None
+        self.mapper = QtCore.QSignalMapper(self)
+        self.mapper.mapped['QString'].connect(self.setPort)
+
+        self.SamplingPeriod = None
+        self.mapper2 = QtCore.QSignalMapper(self)
+        for sra in self.ui.menuAmostragem.actions():
+            self.mapper2.setMapping(sra, sra.text())
+            sra.triggered.connect(self.mapper2.map)
+        self.mapper2.mapped['QString'].connect(self.setSamplingPeriod)
+        self.setSamplingPeriod("1 s")
 
         self.driver = None
 
@@ -108,7 +120,6 @@ class mainwindow(QtWidgets.QMainWindow):
             else:
                 for comp in self.disabledWhenRunning:
                     comp.setEnabled(False)
-                self.ui.comboAmostragem.setEnabled(False)
                 self.enablemap = []
                 for val,chk in zip(self.valsT+self.valsE,self.checksT+self.checksE):
                     self.enablemap.append(chk.isChecked())
@@ -118,9 +129,8 @@ class mainwindow(QtWidgets.QMainWindow):
                 self.configCtrl()
                 self.setPointChanged()
                 self.manualCtrlLevelChanged()                
-                amostr = self.ui.comboAmostragem.currentIndex() + 1
-                self.mainplot.plotSetup(amostr,self.enablemap,self.driver.dman)            
-                self.driver.iniciaLeituras(amostr,self.enablemap,self.ui.comboTipoTermopar.currentText())
+                self.mainplot.plotSetup(self.SamplingPeriod,self.enablemap,self.driver.dman)            
+                self.driver.iniciaLeituras(self.SamplingPeriod,self.enablemap,self.ui.comboTipoTermopar.currentText())
 
 
     def errorStarting(self,msg):
@@ -141,21 +151,48 @@ class mainwindow(QtWidgets.QMainWindow):
         self.driver.limpaLeituras()
         self.mainplot.setDataman(self.driver.dman)
         self.mainplot.updateFig()
-        self.ui.comboAmostragem.setEnabled(True)
+
+
+    def setSamplingPeriod(self,period):
+        if period.startswith(">"):
+            period = period[1:]
+        self.SamplingPeriod = int(period[:-2])
+        for acc in self.ui.menuAmostragem.actions():
+            if acc.text().endswith(period):
+                acc.setText(f">{period}")
+            else:
+                if acc.text().startswith(">"):
+                    acc.setText(acc.text()[1:])
+        self.ui.statusbar.clearMessage()
+
+
+    def setPort(self,portasel):
+        if not self.driver.flagrunning:
+            if portasel.startswith(">"):
+                portasel = portasel[1:]
+            self.Port = portasel
+            for acc in self.ui.menuPorta.actions():
+                if acc.text().endswith(portasel):
+                    acc.setText(f">{portasel}")
+                else:
+                    if acc.text().startswith(">"):
+                        acc.setText(acc.text()[1:])
+            self.ui.statusbar.clearMessage()
+        else: 
+            self.ui.statusbar.showMessage("Not allowed when running.")
 
 
     def populatePorts(self):
-        self.ui.comboPorta.clear()
+        self.ui.menuPorta.clear()
         ports = self.driver.listPorts()
         for port, desc, hwid in sorted(ports):
             # print("{}: {} [{}]".format(port, desc, hwid))
-            # if port == self.Port:
-            #     port = f">{port}"
-            self.ui.comboPorta.addItem(port)
-            # self.ui.menuSelecionar_Porta.addAction(port)
-        # for acc in self.ui.menuSelecionar_Porta.actions():
-        #     self.mapper.setMapping(acc, acc.text())
-        #     acc.triggered.connect(self.mapper.map)
+            if port == self.Port:
+                port = f">{port}"
+            self.ui.menuPorta.addAction(port)
+        for acc in self.ui.menuPorta.actions():
+            self.mapper.setMapping(acc, acc.text())
+            acc.triggered.connect(self.mapper.map)
 
 
     def setDriver(self,driver : driverhardware):
@@ -163,21 +200,6 @@ class mainwindow(QtWidgets.QMainWindow):
         self.populatePorts()
         self.driver.newdata.connect(self.updateGUI)
     
-
-    # def setCurTime(self,time):
-    #     self.ui.timeLabel.setText(f'{time} s')
-
-    # def setValText(self,text,idx):
-    #     if idx <= 8:
-    #         self.valsT[idx].setText(text)
-    #     else:
-    #         self.valsE[idx-8].setText(text)
-    
-    # def setPowerText(self,text):
-    #     self.valPower.setText(text)
-
-    # def setJunta(self,text):
-    #     self.ui.valRef.setText(text)
 
     def changePlotWindow(self):
         newwindow = self.ui.spinJanela.value()
@@ -266,6 +288,8 @@ class mainwindow(QtWidgets.QMainWindow):
             settings.setValue(keyval, ww.value())
             settings.setValue(f'EN{keyval}', str(ww.isEnabled()))
         settings.setValue("MainPlotCfg",self.mainplot.getConfigString())
+        settings.setValue("SamplingPeriod",self.SamplingPeriod)
+        settings.setValue("Port",self.Port)
 
 
     '''
@@ -313,9 +337,17 @@ class mainwindow(QtWidgets.QMainWindow):
             self.mainplot.parseConfigString(settings.value("MainPlotCfg"))
             self.ui.spinJanela.setValue(self.mainplot.janelax[0])
 
+        if settings.value("SamplingPeriod") is not None:
+            self.setSamplingPeriod(str(settings.value("SamplingPeriod")) + " s")
+        
+        if settings.value("Port") is not None:
+            self.Port = settings.value("Port")
+
+
     def writeConfig(self):
         settings = QtCore.QSettings("TCMonSoftware", "TCMon")    
         self.saveState(settings)
+
 
     def readConfig(self):        
         settings = QtCore.QSettings("TCMonSoftware", "TCMon")
